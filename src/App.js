@@ -1,12 +1,12 @@
 // src/App.js
 import React, { useEffect, useRef } from "react";
-import "./index.css";     // html/body { overflow:hidden } lives here
+import "./index.css";      // html/body { overflow: hidden } lives here
 import Spline from "@splinetool/react-spline";
 
-// how fast the cube spins per pixel scrolled
-const SCROLL_FACTOR = 0.002;
-// how fast the cube moves left/right per pixel scrolled
-const MOVE_FACTOR   = 0.005;
+
+const MAX_SHIFT     = 200;
+// Full rotation per section (2π = 360°)
+const MAX_ROTATION  = Math.PI * 2;
 
 const SECTION_COLORS = ["#FFC0CB", "#ADD8E6", "#90EE90", "#FFE4B5"];
 
@@ -14,44 +14,60 @@ export default function App() {
   const containerRef = useRef(null);
   const cubeRef      = useRef(null);
 
-  // grab the cube when Spline loads
+  // 1) Grab the cube once Spline loads
   function onLoad(app) {
     cubeRef.current = app.findObjectByName("Cube");
   }
 
-  // as you scroll, rotate AND translate the cube
+  // 2) Track scroll and update cube position & rotation
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const handleScroll = () => {
+    function onScroll() {
       if (!cubeRef.current) return;
-      const scrollY = container.scrollTop;
 
-      // rotation around Y
-      cubeRef.current.rotation.y = scrollY * SCROLL_FACTOR;
+      const y   = container.scrollTop;
+      const H   = window.innerHeight;
+      const idx = Math.floor(y / H);           // which section we're in
+      const t   = (y % H) / H;                 // progress [0..1) within that section
 
-      // left/right movement along X
-      cubeRef.current.position.x = scrollY * MOVE_FACTOR;
-    };
+      // Determine start/end X for this segment:
+      let startX, endX;
+      if (idx === 0) {
+        // Section 1→2: 0 → -MAX_SHIFT
+        startX = 0;
+        endX   = -MAX_SHIFT;
+      } else if (idx % 2 === 1) {
+        // odd idx (2→3, 4→5, …): -MAX_SHIFT → +MAX_SHIFT
+        startX = -MAX_SHIFT;
+        endX   = +MAX_SHIFT;
+      } else {
+        // even idx ≥2 (3→4, 5→6, …): +MAX_SHIFT → -MAX_SHIFT
+        startX = +MAX_SHIFT;
+        endX   = -MAX_SHIFT;
+      }
 
-    container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+      cubeRef.current.position.x = startX + (endX - startX) * t;
+      const totalSections = y / H;
+      cubeRef.current.rotation.y = totalSections * MAX_ROTATION;
+    }
+
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => container.removeEventListener("scroll", onScroll);
   }, []);
 
   return (
     <>
-      {/* fixed, transparent canvas overlay */}
+      {/* Fixed, transparent canvas overlay */}
       <div
         style={{
           position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          height: "100vh",
+          top: 0, left: 0,
+          width: "100%", height: "100vh",
           pointerEvents: "none",
-          zIndex: 1,
           background: "transparent",
+          zIndex: 1,
         }}
       >
         <Spline
@@ -61,19 +77,19 @@ export default function App() {
         />
       </div>
 
-      {/* single scroll container */}
+      {/* Scroll container with snap‐sections */}
       <div
         ref={containerRef}
         style={{
           height: "100vh",
           overflowY: "auto",
-          scrollSnapType: "y mandatory",
+          scrollSnapType: "y proximity",
           margin: 0,
         }}
       >
-        {SECTION_COLORS.map((bg, idx) => (
+        {SECTION_COLORS.map((bg, i) => (
           <div
-            key={idx}
+            key={i}
             className="section"
             style={{
               height: "100vh",
@@ -86,7 +102,7 @@ export default function App() {
               color: "#333",
             }}
           >
-            Section {idx + 1}
+            Section {i + 1}
           </div>
         ))}
       </div>
